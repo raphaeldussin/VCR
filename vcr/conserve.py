@@ -141,9 +141,11 @@ def add_bathy_mismatch(data_src, data_tgt, remap_matrix):
             # get value of residual
             residual_bottom = residual[bottom_tgt]
 
-            # add to the target bottom level the residual * input data
-            data_tgt[bottom_tgt, ky, kx] += residual_bottom * \
-                                            data_src[bottom_src, ky, kx]
+            # if residual found is one, then no correction is needed
+            if residual_bottom < 1.:
+                # add to the target bottom level the residual * input data
+                data_tgt[bottom_tgt, ky, kx] += residual_bottom * \
+                                                data_src[bottom_src, ky, kx]
 
     return data_tgt
 
