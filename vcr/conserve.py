@@ -86,7 +86,7 @@ def create_remapping_matrix(depth_bnds_src, depth_bnds_tgt, strict=False):
     return remap_matrix
 
 
-def vertical_remap_z2z(datain, remap_matrix):
+def vertical_remap_z2z(datain, remap_matrix, correct4bathy=True):
     """ Vertical remapping for z to z coordinates: this is the simplest case
     and the same remapping matrix can be used for all water columns
 
@@ -104,6 +104,8 @@ def vertical_remap_z2z(datain, remap_matrix):
         remapped data
     """
 
+    maskin = np.where(np.isnan(datain), 0, 1)
+
     # first guess
     datain[np.isnan(datain)] = 0
     datainT = np.transpose(datain, axes=[1, 0, 2])
@@ -112,13 +114,14 @@ def vertical_remap_z2z(datain, remap_matrix):
     out = np.ma.masked_values(out, 0)
 
     # correct for bathy
-    out = add_bathy_mismatch(datain, out, remap_matrix)
+    if correct4bathy:
+        out = add_bathy_mismatch(datain, out, remap_matrix, maskin)
 
     return out
 
 
 @njit
-def add_bathy_mismatch(data_src, data_tgt, remap_matrix):
+def add_bathy_mismatch(data_src, data_tgt, remap_matrix, mask_src):
     """ correct for incomplete remapping due to topography """
     nz_src, ny, nx = data_src.shape
     nz_tgt, ny, nx = data_tgt.shape
@@ -126,8 +129,11 @@ def add_bathy_mismatch(data_src, data_tgt, remap_matrix):
         for kx in range(nx):
             # find bottom cell on source grid: this is one cell above
             # first zero point in the data
-            column_src = data_src[:, ky, kx]
-            bottom_src = np.abs(column_src).argmin() - 1
+            column_src = mask_src[:, ky, kx]
+            bottom_src = nz_src -1
+            for kz in range(nz_src -1,-1,-1):
+                if column_src[kz] == 0:
+                    bottom_src -= 1  # stops at first non-masked point
 
             # compute the residual for this particular bottom level:
             # 1 - sum of coef between surface and bottom level
@@ -149,25 +155,3 @@ def add_bathy_mismatch(data_src, data_tgt, remap_matrix):
 
     return data_tgt
 
-#@njit
-#def correct_bottom(array, depth):
-#    """ in conservative remapping bottom cells are likely to have inconsistent
-#    thickness between source and target grid.
-#    Switch to linear extrapolation for that cell """
-#    nz, ny, nx = array.shape
-#    for ky in range(ny):
-#        for kx in range(nx):
-#            column = array[:, ky, kx]
-#            idx_bottom = np.abs(column).argmin()
-#            if idx_bottom > 1:
-#                # linear extrapolation
-#                dz1 = depth[idx_bottom] - depth[idx_bottom-1]
-#                dz2 = depth[idx_bottom-1] - depth[idx_bottom-2]
-#                scale = dz1/dz2
-#                update = (1 + scale) * column[idx_bottom-1] - \
-#                    scale * column[idx_bottom-2]
-#                array[idx_bottom, ky, kx] = update
-#            elif idx_bottom > 0:
-#                # copy value
-#                array[idx_bottom, ky, kx] = array[idx_bottom-1, ky, kx]
-#    return array
